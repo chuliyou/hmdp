@@ -44,10 +44,10 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
     @Override
     public Result queryById(Long id) {
         // 缓存穿透
-        // Shop shop = queryPassThrough(id);
-//        Shop shop = cacheClient.queryPassThrough(
-//                RedisConstants.CACHE_SHOP_KEY, id, Shop.class, this::getById,
-//                RedisConstants.CACHE_SHOP_TTL,TimeUnit.MINUTES);
+//         Shop shop = queryPassThrough(id);
+        Shop shop = cacheClient.queryPassThrough(
+                RedisConstants.CACHE_SHOP_KEY, id, Shop.class, this::getById,
+                RedisConstants.CACHE_SHOP_TTL,TimeUnit.MINUTES);
 
 //        // 互斥锁解决缓存击穿
 //        Shop shop = queryWithMutex(id);
@@ -57,9 +57,9 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
 
         // 利用逻辑过期解决缓存击穿
 //        Shop shop = queryWithLogicalExpire(id);
-        Shop shop = cacheClient.queryWithLogicalExpire(
-                RedisConstants.CACHE_SHOP_KEY, RedisConstants.LOCK_SHOP_KEY, id, Shop.class, this::getById,
-                RedisConstants.CACHE_SHOP_TTL,TimeUnit.MINUTES);
+//        Shop shop = cacheClient.queryWithLogicalExpire(
+//                RedisConstants.CACHE_SHOP_KEY, RedisConstants.LOCK_SHOP_KEY, id, Shop.class, this::getById,
+//                RedisConstants.CACHE_SHOP_TTL,TimeUnit.MINUTES);
 
         if (shop == null) {
             return Result.fail("店铺不存在！");
