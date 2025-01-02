@@ -203,6 +203,8 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
                 os = 1;
             }
         }
+        // 同一时刻没查完，需要加上上次的偏移量
+        os = minTime == max ? os : os + offset;
         // 5.根据id查询blog
         String idStr = StrUtil.join(",", ids);
         List<Blog> blogs = query()

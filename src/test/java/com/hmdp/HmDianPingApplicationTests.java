@@ -1,8 +1,10 @@
 package com.hmdp;
 
+import com.hmdp.entity.Shop;
 import com.hmdp.entity.User;
 import com.hmdp.service.IUserService;
 import com.hmdp.service.impl.ShopServiceImpl;
+import com.hmdp.utils.RedisConstants;
 import com.hmdp.utils.RedisIdWorker;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
@@ -15,15 +17,22 @@ import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.geo.Point;
+import org.springframework.data.redis.connection.RedisGeoCommands;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import sun.net.www.http.HttpClient;
 
 import javax.annotation.Resource;
 import java.io.BufferedWriter;
 import java.io.FileWriter;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.stream.Collectors;
+
 import org.apache.http.impl.client.HttpClients;
 
 @SpringBootTest
@@ -33,10 +42,66 @@ class HmDianPingApplicationTests {
 
     @Resource
     private RedisIdWorker redisIdWorker;
+    @Resource
+    private StringRedisTemplate stringRedisTemplate;
+
     @Test
     public void testSaveShop() throws InterruptedException {
-        shopService.saveShop2Redis(1L,10L);
+        shopService.saveShop2Redis(1L, 10L);
     }
+    @Test
+    void test1(){
+        System.out.println(Integer.MAX_VALUE + 1);
+        Integer i = Integer.valueOf(1);
+        int i1 = i.intValue();
+    }
+
+    @Test
+    void testHyperLogLog() {
+        // 准备数组，装用户数据
+        String[] users = new String[1000];
+        // 数组角标
+        int index = 0;
+        for (int i = 1; i < 1000000; i++) {
+            //赋值
+            users[index++] = "user_" + i;
+            // 每1000条发送一次
+            if (i % 1000 == 0) {
+                index = 0;
+                stringRedisTemplate.opsForHyperLogLog().add("hll1",users);
+            }
+        }
+        // 统计数量
+        Long size = stringRedisTemplate.opsForHyperLogLog().size("hll1");
+        System.out.println("size :" + size);
+    }
+
+    @Test
+    void loadShopData() {
+        // 1.查询店铺信息
+        List<Shop> list = shopService.list();
+        // 2.把店铺分组，按照typeId分组，typeId一致的放到一个集合
+        Map<Long, List<Shop>> map = list.stream().collect(Collectors.groupingBy(Shop::getTypeId));
+        // 3.分批完成写入Redis
+        for (Map.Entry<Long, List<Shop>> entry : map.entrySet()) {
+            // 3.1.获取类型id
+            Long typeId = entry.getKey();
+            String key = RedisConstants.SHOP_GEO_KEY + typeId;
+            // 3.2.获取同类型的店铺的集合
+            List<Shop> value = entry.getValue();
+            List<RedisGeoCommands.GeoLocation<String>> locations = new ArrayList<>(value.size());
+            // 3.3.写入redis GEOADD key 经度 纬度 member
+            for (Shop shop : value) {
+                // stringRedisTemplate.opsForGeo().add(key, new Point(shop.getX(), shop.getY()), shop.getId().toString());
+                locations.add(new RedisGeoCommands.GeoLocation<>(
+                        shop.getId().toString(),
+                        new Point(shop.getX(), shop.getY())
+                ));
+            }
+            stringRedisTemplate.opsForGeo().add(key, locations);
+        }
+    }
+
 
     private ExecutorService es = Executors.newFixedThreadPool(500);
 
@@ -46,7 +111,7 @@ class HmDianPingApplicationTests {
         Runnable task = () -> {
             for (int i = 0; i < 100; i++) {
                 long id = redisIdWorker.nextId("order");
-                System.out.println("id：" +id);
+                System.out.println("id：" + id);
             }
             latch.countDown();
         };
@@ -61,8 +126,9 @@ class HmDianPingApplicationTests {
 
     @Autowired
     private IUserService userService;
+
     @Test
-    public void function(){
+    public void function() {
         String loginUrl = "http://localhost:8080/api/user/login"; // 替换为实际的登录URL
         String tokenFilePath = "tokens.txt"; // 存储Token的文件路径
 
@@ -71,7 +137,7 @@ class HmDianPingApplicationTests {
             BufferedWriter writer = new BufferedWriter(new FileWriter(tokenFilePath));
             // 从数据库中获取用户手机号
             List<User> users = userService.list();
-            for(User user : users) {
+            for (User user : users) {
                 String phoneNumber = user.getPhone();
                 // 构建登录请求
                 HttpPost httpPost = new HttpPost(loginUrl);
@@ -111,6 +177,7 @@ class HmDianPingApplicationTests {
             e.printStackTrace();
         }
     }
+
     // 解析JSON响应获取token的方法，这里只是示例，具体实现需要根据实际响应格式进行解析
     private static String parseTokenFromJson(String json) {
         try {
